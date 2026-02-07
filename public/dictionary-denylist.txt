@@ -1,0 +1,3 @@
+# Words to exclude from the shipped dictionary.
+# One word per line, lowercase.
+patapat
