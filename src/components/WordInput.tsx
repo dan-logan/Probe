@@ -1,5 +1,3 @@
-import React from 'react';
-
 interface WordInputProps {
   value: string;
   onChange: (word: string) => void;

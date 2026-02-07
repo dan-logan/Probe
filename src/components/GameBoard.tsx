@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import type { GameState, PlayerId } from '../game/types';
 import { TurnBanner } from './TurnBanner';
 import { WordRack } from './WordRack';

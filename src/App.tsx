@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import type { Difficulty, PlayerId } from './game/types';
 import { loadDictionary } from './game/dictionary';
 import { chooseAIWord, chooseAIFreeLetter } from './game/ai';

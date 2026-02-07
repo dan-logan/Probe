@@ -1,5 +1,3 @@
-import React from 'react';
-
 interface FreeLetterPickerProps {
   word: string;
   selectedIndex: number | null;
