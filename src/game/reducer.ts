@@ -73,6 +73,11 @@ function buildCandidateWords(player: Player, askedLetters: Set<string>): string[
   return filterCandidates(player.word.length, knownLetters, missingLetters, presentLetters);
 }
 
+function filterOutGuessedWords(candidates: string[], guessedWords: Set<string>): string[] {
+  if (!guessedWords || guessedWords.size === 0) return candidates;
+  return candidates.filter(word => !guessedWords.has(word.toUpperCase()));
+}
+
 /** Find the next non-eliminated player index (wrapping around). */
 function findNextActivePlayer(players: Player[], currentIndex: number): number {
   const count = players.length;
@@ -137,13 +142,17 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       // Initialize AI letter tracking for each AI player
       const players = shuffledPlayers.map(p => {
         if (!p.isAI || !p.aiState) return p;
-        const letterTracking: Record<string, { askedLetters: Set<string>; candidateWords: string[] }> = {};
+        const letterTracking: Record<string, { askedLetters: Set<string>; candidateWords: string[]; guessedWords: Set<string> }> = {};
         for (const opponent of shuffledPlayers) {
           if (opponent.id !== p.id) {
             const askedLetters = new Set<string>();
+            const guessedWords = new Set<string>();
             letterTracking[opponent.id] = {
               askedLetters,
-              candidateWords: state.difficulty === 'hard' ? buildCandidateWords(opponent, askedLetters) : [],
+              candidateWords: state.difficulty === 'hard'
+                ? filterOutGuessedWords(buildCandidateWords(opponent, askedLetters), guessedWords)
+                : [],
+              guessedWords,
             };
           }
         }
@@ -203,9 +212,10 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         if (tracking) {
           const newAskedLetters = new Set(tracking.askedLetters);
           newAskedLetters.add(upperLetter);
+          const guessedWords = tracking.guessedWords ?? new Set<string>();
           const newCandidateWords =
             state.difficulty === 'hard'
-              ? buildCandidateWords(updatedTarget, newAskedLetters)
+              ? filterOutGuessedWords(buildCandidateWords(updatedTarget, newAskedLetters), guessedWords)
               : tracking.candidateWords;
           return {
             ...p,
@@ -216,6 +226,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
                 [action.targetId]: {
                   ...tracking,
                   askedLetters: newAskedLetters,
+                  guessedWords,
                   candidateWords: newCandidateWords,
                 },
               },
@@ -254,6 +265,33 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       const targetIndex = state.players.findIndex(p => p.id === action.targetId);
       const target = state.players[targetIndex];
       const isCorrect = action.guessedWord.toUpperCase() === target.word;
+      const upperGuess = action.guessedWord.toUpperCase();
+
+      const playersWithGuessLogged = (players: Player[]) =>
+        players.map(p => {
+          if (!p.isAI || !p.aiState) return p;
+          const tracking = p.aiState.letterTracking[action.targetId];
+          if (!tracking) return p;
+          const newGuessedWords = new Set(tracking.guessedWords ?? []);
+          newGuessedWords.add(upperGuess);
+          const newCandidateWords = tracking.candidateWords.length
+            ? filterOutGuessedWords(tracking.candidateWords, newGuessedWords)
+            : tracking.candidateWords;
+          return {
+            ...p,
+            aiState: {
+              ...p.aiState,
+              letterTracking: {
+                ...p.aiState.letterTracking,
+                [action.targetId]: {
+                  ...tracking,
+                  guessedWords: newGuessedWords,
+                  candidateWords: newCandidateWords,
+                },
+              },
+            },
+          };
+        });
 
       if (isCorrect) {
         // Eliminate the target — reveal all their letters
@@ -265,21 +303,22 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
             revealedMask: p.revealedMask.map(() => true),
           };
         });
+        const updatedPlayers = playersWithGuessLogged(players);
 
         const logEntry: LogEntry = {
           turn: state.turnNumber,
           actorId: action.actorId,
           action: 'guess_word',
           targetId: action.targetId,
-          guessedWord: action.guessedWord.toUpperCase(),
+          guessedWord: upperGuess,
           result: 'correct_guess',
         };
 
-        const winner = checkForWinner(players);
+        const winner = checkForWinner(updatedPlayers);
 
         return {
           ...state,
-          players,
+          players: updatedPlayers,
           log: [...state.log, logEntry],
           winner,
           phase: winner ? 'finished' : state.phase,
@@ -287,17 +326,19 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         };
       } else {
         // Wrong guess — actor must reveal a penalty letter
+        const updatedPlayers = playersWithGuessLogged(state.players);
         const logEntry: LogEntry = {
           turn: state.turnNumber,
           actorId: action.actorId,
           action: 'guess_word',
           targetId: action.targetId,
-          guessedWord: action.guessedWord.toUpperCase(),
+          guessedWord: upperGuess,
           result: 'wrong_guess',
         };
 
         return {
           ...state,
+          players: updatedPlayers,
           log: [...state.log, logEntry],
           pendingPenalty: true,
           penaltyPlayerId: action.actorId,
@@ -322,7 +363,10 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         if (state.difficulty === 'hard' && p.isAI && p.aiState && updatedTarget) {
           const tracking = p.aiState.letterTracking[updatedTarget.id];
           if (tracking) {
-            const newCandidateWords = buildCandidateWords(updatedTarget, tracking.askedLetters);
+            const newCandidateWords = filterOutGuessedWords(
+              buildCandidateWords(updatedTarget, tracking.askedLetters),
+              tracking.guessedWords ?? new Set<string>(),
+            );
             return {
               ...p,
               aiState: {

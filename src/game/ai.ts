@@ -249,6 +249,7 @@ function tryWordGuess(
     const totalLetters = opp.word.length;
     const revealedCount = opp.revealedMask.filter(Boolean).length;
     const revealedRatio = revealedCount / totalLetters;
+    const guessedWords = aiPlayer.aiState?.letterTracking[opp.id]?.guessedWords;
 
     switch (difficulty) {
       case 'easy': {
@@ -266,7 +267,7 @@ function tryWordGuess(
       case 'medium': {
         // Guess when >=80% revealed and a dictionary match exists
         if (revealedRatio >= 0.8) {
-          const guess = findMatchingWord(opp);
+          const guess = findMatchingWord(opp, guessedWords);
           if (guess) {
             return { action: 'guess_word', targetId: opp.id, guessedWord: guess };
           }
@@ -277,7 +278,10 @@ function tryWordGuess(
       case 'hard': {
         // Guess when candidate list is 1–3 words
         const tracking = aiPlayer.aiState?.letterTracking[opp.id];
-        const candidates = tracking?.candidateWords ?? [];
+        const rawCandidates = tracking?.candidateWords ?? [];
+        const candidates = guessedWords
+          ? rawCandidates.filter(w => !guessedWords.has(w.toUpperCase()))
+          : rawCandidates;
         if (candidates.length >= 1 && candidates.length <= 3) {
           return {
             action: 'guess_word',
@@ -297,7 +301,7 @@ function tryWordGuess(
  * Given an opponent with partially revealed letters, try to find a dictionary
  * word that matches the known pattern.
  */
-function findMatchingWord(opponent: Player): string | null {
+function findMatchingWord(opponent: Player, guessedWords?: Set<string>): string | null {
   // Build a pattern from revealed letters, e.g. "H_LL_" → regex /^H.LL.$/
   const pattern = opponent.revealedMask.map((revealed, i) =>
     revealed ? opponent.word[i] : '.'
@@ -305,7 +309,8 @@ function findMatchingWord(opponent: Player): string | null {
 
   const regex = new RegExp(`^${pattern}$`, 'i');
   const candidates = getWordsOfLength(opponent.word.length)
-    .filter(w => regex.test(w));
+    .filter(w => regex.test(w))
+    .filter(w => !guessedWords?.has(w.toUpperCase()));
 
   if (candidates.length === 0) return null;
   return candidates[0].toUpperCase();

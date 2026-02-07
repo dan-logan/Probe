@@ -144,9 +144,9 @@ describe('decideAITurn', () => {
       difficulty: 'easy',
       aiState: {
         letterTracking: {
-          'human': { askedLetters: new Set(), candidateWords: [] },
-          'ai-2': { askedLetters: new Set(), candidateWords: [] },
-          'ai-3': { askedLetters: new Set(), candidateWords: [] },
+          'human': { askedLetters: new Set(), candidateWords: [], guessedWords: new Set() },
+          'ai-2': { askedLetters: new Set(), candidateWords: [], guessedWords: new Set() },
+          'ai-3': { askedLetters: new Set(), candidateWords: [], guessedWords: new Set() },
         },
       },
     });
@@ -169,7 +169,7 @@ describe('decideAITurn', () => {
       difficulty: 'easy',
       aiState: {
         letterTracking: {
-          'human': { askedLetters: new Set(), candidateWords: [] },
+          'human': { askedLetters: new Set(), candidateWords: [], guessedWords: new Set() },
         },
       },
     });
@@ -194,7 +194,7 @@ describe('decideAITurn', () => {
       difficulty: 'easy',
       aiState: {
         letterTracking: {
-          'human': { askedLetters: new Set(), candidateWords: [] },
+          'human': { askedLetters: new Set(), candidateWords: [], guessedWords: new Set() },
         },
       },
     });
@@ -219,7 +219,7 @@ describe('decideAITurn', () => {
       revealedMask: [false, true, false, false, false],
       aiState: {
         letterTracking: {
-          'human': { askedLetters: new Set(), candidateWords: [] },
+          'human': { askedLetters: new Set(), candidateWords: [], guessedWords: new Set() },
         },
       },
     });
@@ -234,6 +234,30 @@ describe('decideAITurn', () => {
     const decision = decideAITurn(state, ai);
     expect(decision.action).toBe('guess_word');
     expect(decision.guessedWord).toBe('CHRONICLE');
+  });
+
+  it('medium AI avoids repeating a word already guessed', () => {
+    const ai = makePlayer({
+      id: 'ai-1',
+      word: 'HELLO',
+      difficulty: 'medium',
+      revealedMask: [false, true, false, false, false],
+      aiState: {
+        letterTracking: {
+          'human': { askedLetters: new Set(), candidateWords: [], guessedWords: new Set(['CHRONICLE']) },
+        },
+      },
+    });
+    const human = makePlayer({
+      id: 'human',
+      isAI: false,
+      word: 'CHRONICLE',
+      revealedMask: [true, true, true, true, true, true, true, true, false], // 8/9 revealed
+    });
+    const state = makeGameState([human, ai], 1);
+
+    const decision = decideAITurn(state, ai);
+    expect(decision.action).toBe('ask_letter');
   });
 
   it('throws when no opponents remain', () => {
@@ -259,8 +283,8 @@ describe('decideAITurn', () => {
       revealedMask: [false, true, false, false, false],
       aiState: {
         letterTracking: {
-          'human': { askedLetters: new Set(), candidateWords: [] },
-          'ai-2': { askedLetters: new Set(), candidateWords: [] },
+          'human': { askedLetters: new Set(), candidateWords: [], guessedWords: new Set() },
+          'ai-2': { askedLetters: new Set(), candidateWords: [], guessedWords: new Set() },
         },
       },
     });

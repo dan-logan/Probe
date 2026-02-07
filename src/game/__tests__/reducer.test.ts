@@ -59,10 +59,10 @@ function setupPlayingStateWithTracking(): GameState {
   const state = setupPlayingState();
   const players = state.players.map(p => {
     if (!p.isAI) return p;
-    const letterTracking: Record<string, { askedLetters: Set<string>; candidateWords: string[] }> = {};
+    const letterTracking: Record<string, { askedLetters: Set<string>; candidateWords: string[]; guessedWords: Set<string> }> = {};
     for (const opp of state.players) {
       if (opp.id !== p.id) {
-        letterTracking[opp.id] = { askedLetters: new Set(), candidateWords: [] };
+        letterTracking[opp.id] = { askedLetters: new Set(), candidateWords: [], guessedWords: new Set() };
       }
     }
     return { ...p, aiState: { letterTracking } };

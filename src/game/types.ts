@@ -32,6 +32,8 @@ export interface LetterTrack {
   askedLetters: Set<string>;
   /** Remaining possible words — used by hard AI for candidate filtering */
   candidateWords: string[];
+  /** Words already guessed for this opponent (by any player) */
+  guessedWords: Set<string>;
 }
 
 // ─── Log ─────────────────────────────────────────────────────────────────────
