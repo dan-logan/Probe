@@ -37,6 +37,22 @@ function setupPlayingState(overrides?: Partial<GameState>): GameState {
   };
 }
 
+/** Like setupPlayingState but with fully-initialized AI letterTracking per opponent. */
+function setupPlayingStateWithTracking(): GameState {
+  const state = setupPlayingState();
+  const players = state.players.map(p => {
+    if (!p.isAI) return p;
+    const letterTracking: Record<string, { askedLetters: Set<string>; candidateWords: string[] }> = {};
+    for (const opp of state.players) {
+      if (opp.id !== p.id) {
+        letterTracking[opp.id] = { askedLetters: new Set(), candidateWords: [] };
+      }
+    }
+    return { ...p, aiState: { letterTracking } };
+  });
+  return { ...state, players };
+}
+
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 describe('createInitialState', () => {
@@ -280,6 +296,64 @@ describe('gameReducer', () => {
       // it should be a miss (no NEW letters revealed)
       const entry = next.log[next.log.length - 1];
       expect(entry.result).toBe('miss');
+    });
+
+    // ── AI letter memory tracking ──────────────────────────────────────────
+    it('records asked letter in AI actor\'s askedLetters', () => {
+      const state = setupPlayingStateWithTracking();
+      const next = gameReducer(state, {
+        type: 'ASK_LETTER', actorId: 'ai-1', targetId: 'human', letter: 'E',
+      });
+      const ai1 = next.players.find(p => p.id === 'ai-1')!;
+      expect(ai1.aiState!.letterTracking['human'].askedLetters.has('E')).toBe(true);
+    });
+
+    it('accumulates multiple asked letters across turns', () => {
+      let state = setupPlayingStateWithTracking();
+      state = gameReducer(state, {
+        type: 'ASK_LETTER', actorId: 'ai-1', targetId: 'human', letter: 'E',
+      });
+      state = gameReducer(state, {
+        type: 'ASK_LETTER', actorId: 'ai-1', targetId: 'human', letter: 'Z',
+      });
+      const ai1 = state.players.find(p => p.id === 'ai-1')!;
+      const asked = ai1.aiState!.letterTracking['human'].askedLetters;
+      expect(asked.has('E')).toBe(true);
+      expect(asked.has('Z')).toBe(true);
+      expect(asked.size).toBe(2);
+    });
+
+    it('tracks letters per-opponent independently', () => {
+      let state = setupPlayingStateWithTracking();
+      state = gameReducer(state, {
+        type: 'ASK_LETTER', actorId: 'ai-1', targetId: 'human', letter: 'E',
+      });
+      state = gameReducer(state, {
+        type: 'ASK_LETTER', actorId: 'ai-1', targetId: 'ai-2', letter: 'R',
+      });
+      const ai1 = state.players.find(p => p.id === 'ai-1')!;
+      expect(ai1.aiState!.letterTracking['human'].askedLetters.has('E')).toBe(true);
+      expect(ai1.aiState!.letterTracking['human'].askedLetters.has('R')).toBe(false);
+      expect(ai1.aiState!.letterTracking['ai-2'].askedLetters.has('R')).toBe(true);
+      expect(ai1.aiState!.letterTracking['ai-2'].askedLetters.has('E')).toBe(false);
+    });
+
+    it('does not modify non-actor AI players\' tracking', () => {
+      const state = setupPlayingStateWithTracking();
+      const next = gameReducer(state, {
+        type: 'ASK_LETTER', actorId: 'ai-1', targetId: 'human', letter: 'E',
+      });
+      const ai2 = next.players.find(p => p.id === 'ai-2')!;
+      expect(ai2.aiState!.letterTracking['human'].askedLetters.size).toBe(0);
+    });
+
+    it('does not crash when human is the actor (no aiState)', () => {
+      const state = setupPlayingStateWithTracking();
+      const next = gameReducer(state, {
+        type: 'ASK_LETTER', actorId: 'human', targetId: 'ai-1', letter: 'W',
+      });
+      const human = next.players.find(p => p.id === 'human')!;
+      expect(human.aiState).toBeUndefined();
     });
   });
 
