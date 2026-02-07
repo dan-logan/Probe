@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import type { GameState, PlayerId } from '../game/types';
 import { LetterKeyboard } from './LetterKeyboard';
 import { TargetSelector } from './TargetSelector';

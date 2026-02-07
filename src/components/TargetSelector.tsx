@@ -1,4 +1,3 @@
-import React from 'react';
 import type { Player, PlayerId } from '../game/types';
 
 interface TargetSelectorProps {

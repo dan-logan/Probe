@@ -1,5 +1,5 @@
 import type { Player, PlayerId, GameState, Difficulty } from './types';
-import { getWordsByTier, isValidWord } from './dictionary';
+import { getWordsByTier } from './dictionary';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 

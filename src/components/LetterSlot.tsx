@@ -1,5 +1,3 @@
-import React from 'react';
-
 interface LetterSlotProps {
   letter: string;
   revealed: boolean;

@@ -1,4 +1,4 @@
-import React, { useEffect, useCallback } from 'react';
+import { useEffect, useCallback } from 'react';
 
 interface LetterKeyboardProps {
   /** Map of letter → 'hit' | 'miss' for letters already asked against the current target */

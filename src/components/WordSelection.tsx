@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { isValidWord, isDictionaryLoaded } from '../game/dictionary';
 import { WordInput } from './WordInput';
 import { FreeLetterPicker } from './FreeLetterPicker';
