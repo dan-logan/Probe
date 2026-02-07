@@ -141,15 +141,39 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
 
       const isHit = revealedPositions.length > 0;
 
-      // Update target's revealed mask on hit
+      // Update target's revealed mask on hit AND actor's AI memory
       const players = state.players.map((p, idx) => {
-        if (idx !== targetIndex) return p;
-        if (!isHit) return p;
-        const newMask = [...p.revealedMask];
-        for (const pos of revealedPositions) {
-          newMask[pos] = true;
+        // Update target's revealed mask on hit
+        if (idx === targetIndex) {
+          if (!isHit) return p;
+          const newMask = [...p.revealedMask];
+          for (const pos of revealedPositions) {
+            newMask[pos] = true;
+          }
+          return { ...p, revealedMask: newMask };
         }
-        return { ...p, revealedMask: newMask };
+        // Update actor's AI memory with the asked letter
+        if (p.id === action.actorId && p.isAI && p.aiState) {
+          const tracking = p.aiState.letterTracking[action.targetId];
+          if (tracking) {
+            const newAskedLetters = new Set(tracking.askedLetters);
+            newAskedLetters.add(upperLetter);
+            return {
+              ...p,
+              aiState: {
+                ...p.aiState,
+                letterTracking: {
+                  ...p.aiState.letterTracking,
+                  [action.targetId]: {
+                    ...tracking,
+                    askedLetters: newAskedLetters,
+                  },
+                },
+              },
+            };
+          }
+        }
+        return p;
       });
 
       const logEntry: LogEntry = {
