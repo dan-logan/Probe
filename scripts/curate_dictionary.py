@@ -9,6 +9,8 @@ Filters:
 - ASCII letters only
 - excludes proper names (from /usr/share/dict/propernames if present)
 - excludes words in public/dictionary-denylist.txt (if present)
+- include words from public/dictionary-allowlist.txt even if in proper names
+  (denylist still wins)
 
 Tiers (when building from a wordlist):
 - tier 1: length 4-6
@@ -26,32 +28,34 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "public" / "dictionary.json"
 WORDLIST = ROOT / "public" / "wordlist-20210729.txt"
 DENYLIST = ROOT / "public" / "dictionary-denylist.txt"
+ALLOWLIST = ROOT / "public" / "dictionary-allowlist.txt"
 PROPERNAMES_PATH = Path("/usr/share/dict/propernames")
 
 ALPHA = re.compile(r"^[a-z]+$")
 STRIP_QUOTES = re.compile(r"^\"|\"$")
 
 
-def load_propernames() -> set[str]:
-    if not PROPERNAMES_PATH.exists():
-        return set()
-    names = set()
-    for line in PROPERNAMES_PATH.read_text(encoding="utf-8", errors="ignore").splitlines():
-        name = line.strip().lower()
-        if name:
-            names.add(name)
-    return names
-
-
-def load_denylist() -> set[str]:
-    if not DENYLIST.exists():
+def load_wordlist(path: Path) -> set[str]:
+    if not path.exists():
         return set()
     words = set()
-    for line in DENYLIST.read_text(encoding="utf-8").splitlines():
+    for line in path.read_text(encoding="utf-8", errors="ignore").splitlines():
         word = line.strip().lower()
         if word and not word.startswith("#"):
             words.add(word)
     return words
+
+
+def load_propernames() -> set[str]:
+    return load_wordlist(PROPERNAMES_PATH)
+
+
+def load_denylist() -> set[str]:
+    return load_wordlist(DENYLIST)
+
+
+def load_allowlist() -> set[str]:
+    return load_wordlist(ALLOWLIST)
 
 
 def tier_for_length(length: int) -> int:
@@ -74,6 +78,7 @@ def normalize_word(raw: str) -> str:
 def build_from_wordlist() -> list[dict[str, object]]:
     propernames = load_propernames()
     denylist = load_denylist()
+    allowlist = load_allowlist()
 
     curated = []
     seen = set()
@@ -88,9 +93,9 @@ def build_from_wordlist() -> list[dict[str, object]]:
             continue
         if not ALPHA.match(word):
             continue
-        if word in propernames:
-            continue
         if word in denylist:
+            continue
+        if word in propernames and word not in allowlist:
             continue
         curated.append({"word": word, "tier": tier_for_length(len(word))})
         seen.add(word)
@@ -102,6 +107,7 @@ def curate_existing() -> list[dict[str, object]]:
     data = json.loads(SOURCE.read_text(encoding="utf-8"))
     propernames = load_propernames()
     denylist = load_denylist()
+    allowlist = load_allowlist()
 
     curated = []
     seen = set()
@@ -117,9 +123,9 @@ def curate_existing() -> list[dict[str, object]]:
             continue
         if not ALPHA.match(word):
             continue
-        if word in propernames:
-            continue
         if word in denylist:
+            continue
+        if word in propernames and word not in allowlist:
             continue
 
         curated.append({"word": word, "tier": tier})

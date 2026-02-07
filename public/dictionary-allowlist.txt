@@ -1,0 +1,3 @@
+# Words to include even if they appear in the proper-names list.
+# One word per line, lowercase.
+plastic
