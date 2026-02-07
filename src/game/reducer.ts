@@ -1,4 +1,5 @@
 import type { GameState, GameAction, Player, PlayerId, Difficulty, LogEntry } from './types';
+import { filterCandidates } from './dictionary';
 
 // ─── Initial State ───────────────────────────────────────────────────────────
 
@@ -39,6 +40,37 @@ function shuffleArray<T>(array: T[]): T[] {
     [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
   }
   return shuffled;
+}
+
+function buildKnownLetters(player: Player): Record<number, string> {
+  const known: Record<number, string> = {};
+  player.revealedMask.forEach((revealed, i) => {
+    if (revealed) known[i] = player.word[i];
+  });
+  return known;
+}
+
+function buildPresentLetters(player: Player): Set<string> {
+  const present = new Set<string>();
+  player.revealedMask.forEach((revealed, i) => {
+    if (revealed) present.add(player.word[i]);
+  });
+  return present;
+}
+
+function buildMissingLetters(askedLetters: Set<string>, presentLetters: Set<string>): Set<string> {
+  const missing = new Set<string>();
+  for (const letter of askedLetters) {
+    if (!presentLetters.has(letter)) missing.add(letter);
+  }
+  return missing;
+}
+
+function buildCandidateWords(player: Player, askedLetters: Set<string>): string[] {
+  const knownLetters = buildKnownLetters(player);
+  const presentLetters = buildPresentLetters(player);
+  const missingLetters = buildMissingLetters(askedLetters, presentLetters);
+  return filterCandidates(player.word.length, knownLetters, missingLetters, presentLetters);
 }
 
 /** Find the next non-eliminated player index (wrapping around). */
@@ -108,9 +140,10 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         const letterTracking: Record<string, { askedLetters: Set<string>; candidateWords: string[] }> = {};
         for (const opponent of shuffledPlayers) {
           if (opponent.id !== p.id) {
+            const askedLetters = new Set<string>();
             letterTracking[opponent.id] = {
-              askedLetters: new Set(),
-              candidateWords: [], // TODO: populate from dictionary for hard AI
+              askedLetters,
+              candidateWords: state.difficulty === 'hard' ? buildCandidateWords(opponent, askedLetters) : [],
             };
           }
         }
@@ -141,23 +174,37 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
 
       const isHit = revealedPositions.length > 0;
 
-      // Update target's revealed mask on hit AND actor's AI memory
+      const updatedTarget = isHit
+        ? {
+            ...target,
+            revealedMask: target.revealedMask.map((value, idx) =>
+              revealedPositions.includes(idx) ? true : value
+            ),
+          }
+        : target;
+
+      // Update target's revealed mask on hit AND AI memory
       const players = state.players.map((p, idx) => {
         // Update target's revealed mask on hit
         if (idx === targetIndex) {
-          if (!isHit) return p;
-          const newMask = [...p.revealedMask];
-          for (const pos of revealedPositions) {
-            newMask[pos] = true;
-          }
-          return { ...p, revealedMask: newMask };
+          return updatedTarget;
         }
-        // Update actor's AI memory with the asked letter
-        if (p.id === action.actorId && p.isAI && p.aiState) {
+        // Update AI memory with the asked letter.
+        // In hard mode, all AIs share asked-letter knowledge to avoid repeats.
+        // In other modes, only the actor AI updates its own tracking.
+        const shouldUpdateTracking =
+          p.isAI &&
+          p.aiState &&
+          (state.difficulty === 'hard' || p.id === action.actorId);
+        if (shouldUpdateTracking) {
           const tracking = p.aiState.letterTracking[action.targetId];
           if (tracking) {
             const newAskedLetters = new Set(tracking.askedLetters);
             newAskedLetters.add(upperLetter);
+            const newCandidateWords =
+              state.difficulty === 'hard'
+                ? buildCandidateWords(updatedTarget, newAskedLetters)
+                : tracking.candidateWords;
             return {
               ...p,
               aiState: {
@@ -167,6 +214,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
                   [action.targetId]: {
                     ...tracking,
                     askedLetters: newAskedLetters,
+                    candidateWords: newCandidateWords,
                   },
                 },
               },
@@ -258,11 +306,38 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
 
     // ── Choose which letter to reveal as penalty after a wrong guess ────────
     case 'CHOOSE_PENALTY': {
+      const penaltyTarget = state.players.find(p => p.id === action.playerId);
+      const updatedTarget = penaltyTarget
+        ? {
+            ...penaltyTarget,
+            revealedMask: penaltyTarget.revealedMask.map((value, idx) =>
+              idx === action.letterIndex ? true : value
+            ),
+          }
+        : null;
+
       const players = state.players.map(p => {
-        if (p.id !== action.playerId) return p;
-        const newMask = [...p.revealedMask];
-        newMask[action.letterIndex] = true;
-        return { ...p, revealedMask: newMask };
+        if (updatedTarget && p.id === updatedTarget.id) return updatedTarget;
+        if (state.difficulty === 'hard' && p.isAI && p.aiState && updatedTarget) {
+          const tracking = p.aiState.letterTracking[updatedTarget.id];
+          if (tracking) {
+            const newCandidateWords = buildCandidateWords(updatedTarget, tracking.askedLetters);
+            return {
+              ...p,
+              aiState: {
+                ...p.aiState,
+                letterTracking: {
+                  ...p.aiState.letterTracking,
+                  [updatedTarget.id]: {
+                    ...tracking,
+                    candidateWords: newCandidateWords,
+                  },
+                },
+              },
+            };
+          }
+        }
+        return p;
       });
 
       // Update the last log entry with the penalty position

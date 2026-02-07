@@ -211,6 +211,31 @@ describe('decideAITurn', () => {
     expect(decision.letter!).toMatch(/^[A-Z]$/);
   });
 
+  it('medium AI can guess tier 3 words when pattern matches', () => {
+    const ai = makePlayer({
+      id: 'ai-1',
+      word: 'HELLO',
+      difficulty: 'medium',
+      revealedMask: [false, true, false, false, false],
+      aiState: {
+        letterTracking: {
+          'human': { askedLetters: new Set(), candidateWords: [] },
+        },
+      },
+    });
+    const human = makePlayer({
+      id: 'human',
+      isAI: false,
+      word: 'CHRONICLE',
+      revealedMask: [true, true, true, true, true, true, true, true, false], // 8/9 revealed
+    });
+    const state = makeGameState([human, ai], 1);
+
+    const decision = decideAITurn(state, ai);
+    expect(decision.action).toBe('guess_word');
+    expect(decision.guessedWord).toBe('CHRONICLE');
+  });
+
   it('throws when no opponents remain', () => {
     const ai = makePlayer({
       id: 'ai-1', word: 'HELLO',

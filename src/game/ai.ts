@@ -1,5 +1,5 @@
 import type { Player, PlayerId, GameState, Difficulty } from './types';
-import { getWordsByTier } from './dictionary';
+import { getWordsByTier, getWordsOfLength } from './dictionary';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -304,9 +304,8 @@ function findMatchingWord(opponent: Player): string | null {
   ).join('');
 
   const regex = new RegExp(`^${pattern}$`, 'i');
-  const candidates = getWordsByTier(1)
-    .concat(getWordsByTier(2))
-    .filter(w => w.length === opponent.word.length && regex.test(w));
+  const candidates = getWordsOfLength(opponent.word.length)
+    .filter(w => regex.test(w));
 
   if (candidates.length === 0) return null;
   return candidates[0].toUpperCase();

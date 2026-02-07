@@ -1,6 +1,23 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll, vi } from 'vitest';
 import { gameReducer, createInitialState } from '../reducer';
 import type { GameState, Player } from '../types';
+import { loadDictionary } from '../dictionary';
+
+const MOCK_DICTIONARY = [
+  { word: 'HELLO', tier: 1 },
+  { word: 'WORLD', tier: 1 },
+  { word: 'HEDGE', tier: 1 },
+  { word: 'HAPPY', tier: 1 },
+  { word: 'BRAVE', tier: 2 },
+  { word: 'QUEST', tier: 2 },
+];
+
+beforeAll(async () => {
+  globalThis.fetch = vi.fn().mockResolvedValue({
+    json: () => Promise.resolve(MOCK_DICTIONARY),
+  }) as any;
+  await loadDictionary();
+});
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -195,6 +212,22 @@ describe('gameReducer', () => {
         }
       }
     });
+
+    it('hard mode: seeds candidate words using revealed letters', () => {
+      let state = createInitialState();
+      state = gameReducer(state, { type: 'START_GAME', difficulty: 'hard' });
+      state = gameReducer(state, { type: 'SET_WORD', playerId: 'human', word: 'HELLO', freeLetterIndex: 1 });
+      state = gameReducer(state, { type: 'SET_WORD', playerId: 'ai-1', word: 'WORLD', freeLetterIndex: 3 });
+      state = gameReducer(state, { type: 'SET_WORD', playerId: 'ai-2', word: 'BRAVE', freeLetterIndex: 0 });
+      state = gameReducer(state, { type: 'SET_WORD', playerId: 'ai-3', word: 'QUEST', freeLetterIndex: 4 });
+      state = gameReducer(state, { type: 'BEGIN_PLAY' });
+
+      const ai1 = state.players.find(p => p.id === 'ai-1')!;
+      const tracking = ai1.aiState!.letterTracking['human'];
+      expect(tracking.candidateWords.length).toBeGreaterThan(0);
+      expect(tracking.candidateWords).toContain('HELLO');
+      expect(tracking.candidateWords.every(w => w.length === 5 && w[1] === 'E')).toBe(true);
+    });
   });
 
   // ── ASK_LETTER ────────────────────────────────────────────────────────────
@@ -347,6 +380,39 @@ describe('gameReducer', () => {
       expect(ai2.aiState!.letterTracking['human'].askedLetters.size).toBe(0);
     });
 
+    it('hard mode: shares asked letters across all AIs', () => {
+      const state = setupPlayingStateWithTracking();
+      const hardState: GameState = {
+        ...state,
+        difficulty: 'hard',
+        players: state.players.map(p => (p.isAI ? { ...p, difficulty: 'hard' } : p)),
+      };
+      const next = gameReducer(hardState, {
+        type: 'ASK_LETTER', actorId: 'ai-1', targetId: 'human', letter: 'E',
+      });
+      const ai2 = next.players.find(p => p.id === 'ai-2')!;
+      expect(ai2.aiState!.letterTracking['human'].askedLetters.has('E')).toBe(true);
+    });
+
+    it('hard mode: updates candidate words after a hit and shares across AIs', () => {
+      let state = createInitialState();
+      state = gameReducer(state, { type: 'START_GAME', difficulty: 'hard' });
+      state = gameReducer(state, { type: 'SET_WORD', playerId: 'human', word: 'HELLO', freeLetterIndex: 1 });
+      state = gameReducer(state, { type: 'SET_WORD', playerId: 'ai-1', word: 'WORLD', freeLetterIndex: 3 });
+      state = gameReducer(state, { type: 'SET_WORD', playerId: 'ai-2', word: 'BRAVE', freeLetterIndex: 0 });
+      state = gameReducer(state, { type: 'SET_WORD', playerId: 'ai-3', word: 'QUEST', freeLetterIndex: 4 });
+      state = gameReducer(state, { type: 'BEGIN_PLAY' });
+
+      const next = gameReducer(state, {
+        type: 'ASK_LETTER', actorId: 'ai-1', targetId: 'human', letter: 'L',
+      });
+
+      const ai2 = next.players.find(p => p.id === 'ai-2')!;
+      const candidates = ai2.aiState!.letterTracking['human'].candidateWords;
+      expect(candidates.length).toBeGreaterThan(0);
+      expect(candidates.every(w => w[1] === 'E' && w[2] === 'L' && w[3] === 'L')).toBe(true);
+    });
+
     it('does not crash when human is the actor (no aiState)', () => {
       const state = setupPlayingStateWithTracking();
       const next = gameReducer(state, {
@@ -476,6 +542,29 @@ describe('gameReducer', () => {
       });
       const lastEntry = next.log[next.log.length - 1];
       expect(lastEntry.penaltyPosition).toBe(3);
+    });
+
+    it('hard mode: updates candidate words when a penalty reveals a letter', () => {
+      let state = createInitialState();
+      state = gameReducer(state, { type: 'START_GAME', difficulty: 'hard' });
+      state = gameReducer(state, { type: 'SET_WORD', playerId: 'human', word: 'HELLO', freeLetterIndex: 1 });
+      state = gameReducer(state, { type: 'SET_WORD', playerId: 'ai-1', word: 'WORLD', freeLetterIndex: 3 });
+      state = gameReducer(state, { type: 'SET_WORD', playerId: 'ai-2', word: 'BRAVE', freeLetterIndex: 0 });
+      state = gameReducer(state, { type: 'SET_WORD', playerId: 'ai-3', word: 'QUEST', freeLetterIndex: 4 });
+      state = gameReducer(state, { type: 'BEGIN_PLAY' });
+
+      state = gameReducer(state, {
+        type: 'GUESS_WORD', actorId: 'human', targetId: 'ai-1', guessedWord: 'WRONG',
+      });
+
+      const next = gameReducer(state, {
+        type: 'CHOOSE_PENALTY', playerId: 'human', letterIndex: 0,
+      });
+
+      const ai1 = next.players.find(p => p.id === 'ai-1')!;
+      const candidates = ai1.aiState!.letterTracking['human'].candidateWords;
+      expect(candidates.length).toBeGreaterThan(0);
+      expect(candidates.every(w => w[0] === 'H')).toBe(true);
     });
   });
 
