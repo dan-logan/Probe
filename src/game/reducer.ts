@@ -192,34 +192,35 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         // Update AI memory with the asked letter.
         // In hard mode, all AIs share asked-letter knowledge to avoid repeats.
         // In other modes, only the actor AI updates its own tracking.
-        const shouldUpdateTracking =
-          p.isAI &&
-          p.aiState &&
-          (state.difficulty === 'hard' || p.id === action.actorId);
-        if (shouldUpdateTracking) {
-          const tracking = p.aiState.letterTracking[action.targetId];
-          if (tracking) {
-            const newAskedLetters = new Set(tracking.askedLetters);
-            newAskedLetters.add(upperLetter);
-            const newCandidateWords =
-              state.difficulty === 'hard'
-                ? buildCandidateWords(updatedTarget, newAskedLetters)
-                : tracking.candidateWords;
-            return {
-              ...p,
-              aiState: {
-                ...p.aiState,
-                letterTracking: {
-                  ...p.aiState.letterTracking,
-                  [action.targetId]: {
-                    ...tracking,
-                    askedLetters: newAskedLetters,
-                    candidateWords: newCandidateWords,
-                  },
+        if (
+          !p.isAI ||
+          !p.aiState ||
+          !(state.difficulty === 'hard' || p.id === action.actorId)
+        ) {
+          return p;
+        }
+        const tracking = p.aiState.letterTracking[action.targetId];
+        if (tracking) {
+          const newAskedLetters = new Set(tracking.askedLetters);
+          newAskedLetters.add(upperLetter);
+          const newCandidateWords =
+            state.difficulty === 'hard'
+              ? buildCandidateWords(updatedTarget, newAskedLetters)
+              : tracking.candidateWords;
+          return {
+            ...p,
+            aiState: {
+              ...p.aiState,
+              letterTracking: {
+                ...p.aiState.letterTracking,
+                [action.targetId]: {
+                  ...tracking,
+                  askedLetters: newAskedLetters,
+                  candidateWords: newCandidateWords,
                 },
               },
-            };
-          }
+            },
+          };
         }
         return p;
       });
