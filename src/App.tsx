@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import type { Difficulty, PlayerId } from './game/types';
-import { loadDictionary } from './game/dictionary';
+import { loadDictionary, setActiveDictionary } from './game/dictionary';
 import { chooseAIWord, chooseAIFreeLetter } from './game/ai';
 import { useGameProvider, GameContext } from './hooks/useGame';
 import { useAITurn } from './hooks/useAITurn';
@@ -39,6 +39,7 @@ export default function App() {
   // ── Title Screen: start game ──────────────────────────────────────────────
   const handleStart = useCallback(
     (difficulty: Difficulty) => {
+      setActiveDictionary(difficulty);
       startGame(difficulty);
     },
     [startGame]

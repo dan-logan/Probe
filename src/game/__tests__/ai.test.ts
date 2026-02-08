@@ -9,38 +9,56 @@ import {
   AI_THINK_DELAY_MIN,
   AI_THINK_DELAY_MAX,
 } from '../ai';
-import { loadDictionary } from '../dictionary';
+import { loadDictionary, setActiveDictionary } from '../dictionary';
 
 // ─── Mock Dictionary ──────────────────────────────────────────────────────────
 
-const MOCK_DICTIONARY = [
-  // Tier 1 — common short words (easy AI)
-  { word: 'ABLE', tier: 1 },
-  { word: 'ALSO', tier: 1 },
-  { word: 'BACK', tier: 1 },
-  { word: 'BALL', tier: 1 },
-  { word: 'BAND', tier: 1 },
-  { word: 'BANK', tier: 1 },
-  { word: 'HELLO', tier: 1 },
-  { word: 'WORLD', tier: 1 },
-  { word: 'HOUSE', tier: 1 },
-  { word: 'PLANT', tier: 1 },
-  // Tier 2 — medium words
-  { word: 'BRAVE', tier: 2 },
-  { word: 'QUEST', tier: 2 },
-  { word: 'ABSTRACT', tier: 2 },
-  { word: 'COMPOUND', tier: 2 },
-  { word: 'STRATEGY', tier: 2 },
-  // Tier 3 — hard/uncommon words
-  { word: 'BEAUTIFUL', tier: 3 },
-  { word: 'CHRONICLE', tier: 3 },
-  { word: 'LABYRINTH', tier: 3 },
-  { word: 'TECHNIQUE', tier: 3 },
+const EASY_WORDS = [
+  'ABLE',
+  'ALSO',
+  'BACK',
+  'BALL',
+  'BAND',
+  'BANK',
+  'HELLO',
+  'WORLD',
+  'HOUSE',
+  'PLANT',
 ];
 
+const MEDIUM_WORDS = [
+  ...EASY_WORDS,
+  'BRAVE',
+  'QUEST',
+  'ABSTRACT',
+  'COMPOUND',
+  'STRATEGY',
+  'CHRONICLE',
+];
+
+const HARD_WORDS = [
+  ...MEDIUM_WORDS,
+  'BEAUTIFUL',
+  'LABYRINTH',
+  'TECHNIQUE',
+];
+
+const EASY_TEXT = EASY_WORDS.join('\n');
+const MEDIUM_TEXT = MEDIUM_WORDS.join('\n');
+const HARD_TEXT = HARD_WORDS.join('\n');
+
 beforeAll(async () => {
-  globalThis.fetch = vi.fn().mockResolvedValue({
-    json: () => Promise.resolve(MOCK_DICTIONARY),
+  globalThis.fetch = vi.fn((url: string) => {
+    if (url.endsWith('dictionary-easy.txt')) {
+      return Promise.resolve({ text: () => Promise.resolve(EASY_TEXT) });
+    }
+    if (url.endsWith('dictionary-medium.txt')) {
+      return Promise.resolve({ text: () => Promise.resolve(MEDIUM_TEXT) });
+    }
+    if (url.endsWith('dictionary-hard.txt')) {
+      return Promise.resolve({ text: () => Promise.resolve(HARD_TEXT) });
+    }
+    return Promise.reject(new Error(`Unexpected fetch: ${url}`));
   }) as any;
   await loadDictionary();
 });
@@ -85,7 +103,7 @@ describe('chooseAIWord', () => {
     }
   });
 
-  it('easy AI picks 4-6 letter tier 1 words', () => {
+  it('easy AI picks 4-6 letter words', () => {
     for (let i = 0; i < 30; i++) {
       const word = chooseAIWord('easy');
       expect(word.length).toBeGreaterThanOrEqual(4);
@@ -137,6 +155,7 @@ describe('chooseAIFreeLetter', () => {
 
 describe('decideAITurn', () => {
   it('returns a valid decision with action and target', () => {
+    setActiveDictionary('easy');
     const ai = makePlayer({
       id: 'ai-1',
       word: 'HELLO',
@@ -162,6 +181,7 @@ describe('decideAITurn', () => {
   });
 
   it('easy AI guesses when all letters revealed', () => {
+    setActiveDictionary('easy');
     const ai = makePlayer({
       id: 'ai-1',
       word: 'HELLO',
@@ -187,6 +207,7 @@ describe('decideAITurn', () => {
   });
 
   it('asks a letter when not confident enough to guess', () => {
+    setActiveDictionary('easy');
     const ai = makePlayer({
       id: 'ai-1',
       word: 'HELLO',
@@ -211,7 +232,8 @@ describe('decideAITurn', () => {
     expect(decision.letter!).toMatch(/^[A-Z]$/);
   });
 
-  it('medium AI can guess tier 3 words when pattern matches', () => {
+  it('medium AI can guess matching words when pattern fits', () => {
+    setActiveDictionary('medium');
     const ai = makePlayer({
       id: 'ai-1',
       word: 'HELLO',
@@ -237,6 +259,7 @@ describe('decideAITurn', () => {
   });
 
   it('medium AI avoids repeating a word already guessed', () => {
+    setActiveDictionary('medium');
     const ai = makePlayer({
       id: 'ai-1',
       word: 'HELLO',
@@ -261,6 +284,7 @@ describe('decideAITurn', () => {
   });
 
   it('throws when no opponents remain', () => {
+    setActiveDictionary('easy');
     const ai = makePlayer({
       id: 'ai-1', word: 'HELLO',
       revealedMask: [false, true, false, false, false],
@@ -276,6 +300,7 @@ describe('decideAITurn', () => {
   });
 
   it('medium AI targets opponent with most revealed letters', () => {
+    setActiveDictionary('medium');
     const ai = makePlayer({
       id: 'ai-1',
       word: 'HELLO',

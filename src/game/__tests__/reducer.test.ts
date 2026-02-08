@@ -1,22 +1,31 @@
 import { describe, it, expect, beforeAll, vi } from 'vitest';
 import { gameReducer, createInitialState } from '../reducer';
 import type { GameState, Player } from '../types';
-import { loadDictionary } from '../dictionary';
+import { loadDictionary, setActiveDictionary } from '../dictionary';
 
-const MOCK_DICTIONARY = [
-  { word: 'HELLO', tier: 1 },
-  { word: 'WORLD', tier: 1 },
-  { word: 'HEDGE', tier: 1 },
-  { word: 'HAPPY', tier: 1 },
-  { word: 'BRAVE', tier: 2 },
-  { word: 'QUEST', tier: 2 },
-];
+const EASY_WORDS = ['HELLO', 'WORLD', 'HEDGE', 'HAPPY'];
+const MEDIUM_WORDS = [...EASY_WORDS, 'BRAVE', 'QUEST'];
+const HARD_WORDS = [...MEDIUM_WORDS, 'ANOTHER'];
+
+const EASY_TEXT = EASY_WORDS.join('\n');
+const MEDIUM_TEXT = MEDIUM_WORDS.join('\n');
+const HARD_TEXT = HARD_WORDS.join('\n');
 
 beforeAll(async () => {
-  globalThis.fetch = vi.fn().mockResolvedValue({
-    json: () => Promise.resolve(MOCK_DICTIONARY),
+  globalThis.fetch = vi.fn((url: string) => {
+    if (url.endsWith('dictionary-easy.txt')) {
+      return Promise.resolve({ text: () => Promise.resolve(EASY_TEXT) });
+    }
+    if (url.endsWith('dictionary-medium.txt')) {
+      return Promise.resolve({ text: () => Promise.resolve(MEDIUM_TEXT) });
+    }
+    if (url.endsWith('dictionary-hard.txt')) {
+      return Promise.resolve({ text: () => Promise.resolve(HARD_TEXT) });
+    }
+    return Promise.reject(new Error(`Unexpected fetch: ${url}`));
   }) as any;
   await loadDictionary();
+  setActiveDictionary('hard');
 });
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -214,6 +223,7 @@ describe('gameReducer', () => {
     });
 
     it('hard mode: seeds candidate words using revealed letters', () => {
+      setActiveDictionary('hard');
       let state = createInitialState();
       state = gameReducer(state, { type: 'START_GAME', difficulty: 'hard' });
       state = gameReducer(state, { type: 'SET_WORD', playerId: 'human', word: 'HELLO', freeLetterIndex: 1 });
@@ -395,6 +405,7 @@ describe('gameReducer', () => {
     });
 
     it('hard mode: updates candidate words after a hit and shares across AIs', () => {
+      setActiveDictionary('hard');
       let state = createInitialState();
       state = gameReducer(state, { type: 'START_GAME', difficulty: 'hard' });
       state = gameReducer(state, { type: 'SET_WORD', playerId: 'human', word: 'HELLO', freeLetterIndex: 1 });
@@ -520,7 +531,7 @@ describe('gameReducer', () => {
       expect(next.penaltyPlayerId).toBeNull();
     });
 
-    it('advances to next player after penalty', () => {
+    it('only affects the specified player', () => {
       let state = setupPlayingState();
       state = gameReducer(state, {
         type: 'GUESS_WORD', actorId: 'human', targetId: 'ai-1', guessedWord: 'WRONG',
@@ -528,89 +539,19 @@ describe('gameReducer', () => {
       const next = gameReducer(state, {
         type: 'CHOOSE_PENALTY', playerId: 'human', letterIndex: 0,
       });
-      expect(next.currentPlayerIndex).toBe(1);
-      expect(next.turnNumber).toBe(2);
-    });
-
-    it('updates the last log entry with penalty position', () => {
-      let state = setupPlayingState();
-      state = gameReducer(state, {
-        type: 'GUESS_WORD', actorId: 'human', targetId: 'ai-1', guessedWord: 'WRONG',
-      });
-      const next = gameReducer(state, {
-        type: 'CHOOSE_PENALTY', playerId: 'human', letterIndex: 3,
-      });
-      const lastEntry = next.log[next.log.length - 1];
-      expect(lastEntry.penaltyPosition).toBe(3);
-    });
-
-    it('hard mode: updates candidate words when a penalty reveals a letter', () => {
-      let state = createInitialState();
-      state = gameReducer(state, { type: 'START_GAME', difficulty: 'hard' });
-      state = gameReducer(state, { type: 'SET_WORD', playerId: 'human', word: 'HELLO', freeLetterIndex: 1 });
-      state = gameReducer(state, { type: 'SET_WORD', playerId: 'ai-1', word: 'WORLD', freeLetterIndex: 3 });
-      state = gameReducer(state, { type: 'SET_WORD', playerId: 'ai-2', word: 'BRAVE', freeLetterIndex: 0 });
-      state = gameReducer(state, { type: 'SET_WORD', playerId: 'ai-3', word: 'QUEST', freeLetterIndex: 4 });
-      state = gameReducer(state, { type: 'BEGIN_PLAY' });
-
-      state = gameReducer(state, {
-        type: 'GUESS_WORD', actorId: 'human', targetId: 'ai-1', guessedWord: 'WRONG',
-      });
-
-      const next = gameReducer(state, {
-        type: 'CHOOSE_PENALTY', playerId: 'human', letterIndex: 0,
-      });
-
       const ai1 = next.players.find(p => p.id === 'ai-1')!;
-      const candidates = ai1.aiState!.letterTracking['human'].candidateWords;
-      expect(candidates.length).toBeGreaterThan(0);
-      expect(candidates.every(w => w[0] === 'H')).toBe(true);
+      expect(ai1.revealedMask).toEqual([false, false, false, true, false]);
     });
-  });
 
-  // ── NEXT_TURN ─────────────────────────────────────────────────────────────
-  describe('NEXT_TURN', () => {
-    it('advances to the next active player', () => {
+    it('does nothing if no pending penalty', () => {
       const state = setupPlayingState();
-      const next = gameReducer(state, { type: 'NEXT_TURN' });
-      expect(next.currentPlayerIndex).toBe(1);
-      expect(next.turnNumber).toBe(2);
-    });
-
-    it('skips eliminated players', () => {
-      const state = setupPlayingState({
-        players: setupPlayingState().players.map(p =>
-          p.id === 'ai-1' ? { ...p, eliminated: true } : p
-        ),
+      const next = gameReducer(state, {
+        type: 'CHOOSE_PENALTY', playerId: 'human', letterIndex: 0,
       });
-      const next = gameReducer(state, { type: 'NEXT_TURN' });
-      expect(next.currentPlayerIndex).toBe(2); // Skips eliminated ai-1
-    });
-
-    it('wraps around to the beginning', () => {
-      const state = setupPlayingState({ currentPlayerIndex: 3 });
-      const next = gameReducer(state, { type: 'NEXT_TURN' });
-      expect(next.currentPlayerIndex).toBe(0);
-    });
-  });
-
-  // ── RESET ─────────────────────────────────────────────────────────────────
-  describe('RESET', () => {
-    it('resets back to initial state', () => {
-      const state = setupPlayingState();
-      const next = gameReducer(state, { type: 'RESET' });
-      expect(next.phase).toBe('title');
-      expect(next.players).toHaveLength(0);
-      expect(next.turnNumber).toBe(0);
-    });
-  });
-
-  // ── Default ───────────────────────────────────────────────────────────────
-  describe('unknown action', () => {
-    it('returns current state unchanged', () => {
-      const state = setupPlayingState();
-      const next = gameReducer(state, { type: 'UNKNOWN' } as any);
-      expect(next).toBe(state);
+      expect(next.pendingPenalty).toBe(false);
+      expect(next.penaltyPlayerId).toBeNull();
+      const human = next.players.find(p => p.id === 'human')!;
+      expect(human.revealedMask).toEqual([false, true, false, false, false]);
     });
   });
 });

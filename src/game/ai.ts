@@ -1,5 +1,5 @@
 import type { Player, PlayerId, GameState, Difficulty } from './types';
-import { getWordsByTier, getWordsOfLength } from './dictionary';
+import { getWordsForDifficulty, getWordsOfLength } from './dictionary';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -22,29 +22,24 @@ export const AI_THINK_DELAY_MAX = 1200;
  * - Hard: 7–12 letter uncommon words (tier 2 or 3)
  */
 export function chooseAIWord(difficulty: Difficulty): string {
+  const pool = getWordsForDifficulty(difficulty);
   let candidates: string[];
 
   switch (difficulty) {
     case 'easy':
-      candidates = getWordsByTier(1).filter(w => w.length >= 4 && w.length <= 6);
+      candidates = pool.filter(w => w.length >= 4 && w.length <= 6);
       break;
     case 'medium':
-      candidates = [
-        ...getWordsByTier(1).filter(w => w.length >= 5 && w.length <= 8),
-        ...getWordsByTier(2).filter(w => w.length >= 5 && w.length <= 8),
-      ];
+      candidates = pool.filter(w => w.length >= 5 && w.length <= 8);
       break;
     case 'hard':
-      candidates = [
-        ...getWordsByTier(2).filter(w => w.length >= 7 && w.length <= 12),
-        ...getWordsByTier(3).filter(w => w.length >= 7 && w.length <= 12),
-      ];
+      candidates = pool.filter(w => w.length >= 7 && w.length <= 12);
       break;
   }
 
   if (candidates.length === 0) {
     // Fallback: pick any valid word
-    candidates = getWordsByTier(1);
+    candidates = pool;
   }
 
   return candidates[Math.floor(Math.random() * candidates.length)].toUpperCase();

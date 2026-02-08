@@ -348,6 +348,9 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
 
     // ── Choose which letter to reveal as penalty after a wrong guess ────────
     case 'CHOOSE_PENALTY': {
+      if (!state.pendingPenalty || state.penaltyPlayerId !== action.playerId) {
+        return state;
+      }
       const penaltyTarget = state.players.find(p => p.id === action.playerId);
       const updatedTarget = penaltyTarget
         ? {

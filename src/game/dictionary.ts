@@ -1,35 +1,49 @@
-import type { DictionaryEntry } from './types';
+import type { Difficulty } from './types';
 
 // ─── Dictionary Store ────────────────────────────────────────────────────────
 
-let dictionary: DictionaryEntry[] = [];
-let wordSet: Set<string> = new Set();
-let wordsByTier: Record<number, string[]> = { 1: [], 2: [], 3: [] };
+type DictionaryData = {
+  words: string[];
+  wordSet: Set<string>;
+  wordsByLength: Map<number, string[]>;
+};
+
+const DICTIONARY_FILES: Record<Difficulty, string> = {
+  easy: 'dictionary-easy.txt',
+  medium: 'dictionary-medium.txt',
+  hard: 'dictionary-hard.txt',
+};
+
+let dictionaries: Record<Difficulty, DictionaryData> = {
+  easy: { words: [], wordSet: new Set(), wordsByLength: new Map() },
+  medium: { words: [], wordSet: new Set(), wordsByLength: new Map() },
+  hard: { words: [], wordSet: new Set(), wordsByLength: new Map() },
+};
+
+let activeDifficulty: Difficulty = 'medium';
 let loaded = false;
 
 // ─── Loading ─────────────────────────────────────────────────────────────────
 
 /**
- * Load the dictionary from the bundled JSON file.
+ * Load the dictionaries from bundled word list files.
  * Should be called once at app startup.
  */
 export async function loadDictionary(): Promise<void> {
   if (loaded) return;
 
   try {
-    const response = await fetch(`${import.meta.env.BASE_URL}dictionary.json`);
-    const data: DictionaryEntry[] = await response.json();
+    const [easyWords, mediumWords, hardWords] = await Promise.all([
+      loadWordList(DICTIONARY_FILES.easy),
+      loadWordList(DICTIONARY_FILES.medium),
+      loadWordList(DICTIONARY_FILES.hard),
+    ]);
 
-    dictionary = data;
-    wordSet = new Set(data.map(entry => entry.word.toUpperCase()));
-    wordsByTier = { 1: [], 2: [], 3: [] };
-
-    for (const entry of data) {
-      const tier = entry.tier;
-      if (wordsByTier[tier]) {
-        wordsByTier[tier].push(entry.word.toUpperCase());
-      }
-    }
+    dictionaries = {
+      easy: buildDictionaryData(easyWords),
+      medium: buildDictionaryData(mediumWords),
+      hard: buildDictionaryData(hardWords),
+    };
 
     loaded = true;
   } catch (error) {
@@ -38,23 +52,21 @@ export async function loadDictionary(): Promise<void> {
   }
 }
 
-// ─── Queries ─────────────────────────────────────────────────────────────────
+// ─── Queries ────────────────────────────────────────────────────────────────
 
 /** Check if a word exists in the dictionary. Case-insensitive. */
-export function isValidWord(word: string): boolean {
-  return wordSet.has(word.toUpperCase());
+export function isValidWord(word: string, difficulty: Difficulty = activeDifficulty): boolean {
+  return dictionaries[difficulty]?.wordSet.has(word.toUpperCase()) ?? false;
 }
 
-/** Get all words in a given frequency tier. */
-export function getWordsByTier(tier: 1 | 2 | 3): string[] {
-  return wordsByTier[tier] ?? [];
+/** Get all words for a difficulty (easy/medium/hard). */
+export function getWordsForDifficulty(difficulty: Difficulty = activeDifficulty): string[] {
+  return dictionaries[difficulty]?.words ?? [];
 }
 
 /** Get all dictionary words of a specific length. */
-export function getWordsOfLength(length: number): string[] {
-  return dictionary
-    .filter(entry => entry.word.length === length)
-    .map(entry => entry.word.toUpperCase());
+export function getWordsOfLength(length: number, difficulty: Difficulty = activeDifficulty): string[] {
+  return dictionaries[difficulty]?.wordsByLength.get(length) ?? [];
 }
 
 /**
@@ -98,6 +110,48 @@ export function isDictionaryLoaded(): boolean {
 }
 
 /** Get total word count (for display purposes). */
-export function getWordCount(): number {
-  return dictionary.length;
+export function getWordCount(difficulty: Difficulty = activeDifficulty): number {
+  return dictionaries[difficulty]?.words.length ?? 0;
+}
+
+/** Set which dictionary difficulty the game should use. */
+export function setActiveDictionary(difficulty: Difficulty): void {
+  activeDifficulty = difficulty;
+}
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+async function loadWordList(filename: string): Promise<string[]> {
+  const response = await fetch(`${import.meta.env.BASE_URL}${filename}`);
+  const text = await response.text();
+  const words: string[] = [];
+  const seen = new Set<string>();
+
+  for (const rawLine of text.split(/\r?\n/)) {
+    const word = rawLine.trim().toUpperCase();
+    if (!word) continue;
+    if (!/^[A-Z]{4,12}$/.test(word)) continue;
+    if (seen.has(word)) continue;
+    seen.add(word);
+    words.push(word);
+  }
+
+  return words;
+}
+
+function buildDictionaryData(words: string[]): DictionaryData {
+  const wordSet = new Set(words);
+  const wordsByLength = new Map<number, string[]>();
+
+  for (const word of words) {
+    const length = word.length;
+    const bucket = wordsByLength.get(length);
+    if (bucket) {
+      bucket.push(word);
+    } else {
+      wordsByLength.set(length, [word]);
+    }
+  }
+
+  return { words, wordSet, wordsByLength };
 }
