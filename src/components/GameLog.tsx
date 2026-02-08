@@ -14,10 +14,10 @@ interface GameLogProps {
 export function GameLog({ entries, players }: GameLogProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll to bottom when new entries appear
+  // Auto-scroll to top so the latest entry stays visible
   useEffect(() => {
     if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      scrollRef.current.scrollTop = 0;
     }
   }, [entries.length]);
 
@@ -60,7 +60,7 @@ export function GameLog({ entries, players }: GameLogProps) {
         {entries.length === 0 ? (
           <p className="text-gray-600 italic">No moves yet...</p>
         ) : (
-          entries.map((entry, i) => (
+          [...entries].reverse().map((entry, i) => (
             <div
               key={i}
               className={`py-1 px-2 rounded ${
